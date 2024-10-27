@@ -1,77 +1,85 @@
-#include <mpi.h>
+%%sh
+cat > prime.c << EOF
 #include <stdio.h>
-#include <math.h>
 #include <stdlib.h>
+#include <math.h>
+#include <mpi.h>
 
-int main(int argc, char** argv) {
-    int rank, p, n;
+int main(int argc, char **argv) {
+    int rank, total_p, upper_limit;
+    double start_time , end_time , total_time;
 
-    MPI_Init(&argc, &argv); // Initialize MPI
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank); // Get rank of the process
-    MPI_Comm_size(MPI_COMM_WORLD, &p); // Get number of processes
+    MPI_Init(&argc, &argv);
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &total_p);
 
     if (rank == 0) {
-        printf("Enter the upper limit of prime search (n): ");
-        fflush(stdout);
-        scanf("%d", &n);
+        printf("We want %d primes\n", total_p);
     }
 
-    // Broadcast the value of n to all processes
-    MPI_Bcast(&n, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    upper_limit = total_p;
+    int c_prime = -1;  // Initialize each process's prime to -1 (unassigned)
+    start_time = MPI_Wtime();
 
-    int radical_n = (int)sqrt(n); // Only need to divide by primes up to √n
-    int *primes = malloc((n + 1) * sizeof(int));
-
-    // Initialize primes array with 1s
-    for (int i = 2; i <= n; i++) {
-        primes[i] = 1;
-    }
-
-    // Process 0 sends a number from divide_nums to other processes
+    
     if (rank == 0) {
-        for (int i = 2; i < p && i <= radical_n; i++) {
-            MPI_Send(&i, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
+        
+        c_prime = 2;
+        
+
+        // Send non-multiples of 2 up to n
+        for (int num = 3; num <= upper_limit * upper_limit; num+=2) {  // Increased range for more numbers
+           
+                MPI_Send(&num, 1, MPI_INT, rank + 1, 0, MPI_COMM_WORLD);
+            
         }
+
+        // Define and send the terminator
+        int terminator = -1;
+        MPI_Send(&terminator, 1, MPI_INT, rank + 1, 0, MPI_COMM_WORLD);
+
+        // Print the prime for Process 0
+        printf("Process %d found prime: %d\n", rank, c_prime);
+
     } 
     else {
-        // Each process receives the number from divide_nums from process 0 from MPI_Send with tag 0 
+        int r_num;
+        MPI_Recv(&r_num, 1, MPI_INT, rank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        int c_prime = r_num;  // Store the first received prime
+
         int number;
-        MPI_Recv(&number, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-        printf("Process %d received number: %d\n", rank, number);
+        while (1) {
+            MPI_Recv(&number, 1, MPI_INT, rank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            if (number == -1) {  // Received terminator
+                // Pass the terminator to the next process if not the last in the chain
+                if (rank < total_p - 1) {
+                    MPI_Send(&number, 1, MPI_INT, rank + 1, 0, MPI_COMM_WORLD);
+                }
+                break;
+            }
 
-        // Mark non-primes in the range [2, n] that are multiples of received numb
-        for (int i = number*number; i<= n; i+=number) {
-				      primes[i]=0;
-
-        }
-    }
-
-    // all processed other than the last process send the updated prime array to second process
-    if (rank != p - 1) {
-        // Send primes array to the next process in the chain
-        MPI_Send(primes, n + 1, MPI_INT, rank + 1, 0, MPI_COMM_WORLD);
-    }
-    else {
-        // Last process in the chain sends the primes array back to process 0
-        MPI_Send(primes, n + 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
-    }
-
-    // Process 0 receives the final primes array
-    if (rank == 0) {
-        MPI_Recv(primes, n + 1, MPI_INT, p - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-
-        // Print the prime numbers
-        printf("Prime numbers up to %d:\n", n);
-        for (int i = 2; i <= n; i++) {
-            if (primes[i] == 1) {
-                printf("%d ", i);
+            if (number % c_prime != 0) {  // Filter
+                // Send to the next process if not the last
+                if (rank < total_p - 1) {
+                    MPI_Send(&number, 1, MPI_INT, rank + 1, 0, MPI_COMM_WORLD);
+                }
             }
         }
-        printf("\n");
+
+        // Print the prime for each process
+        printf("Process %d found prime: %d\n", rank, c_prime);
     }
 
-   
-    free(primes);
+    end_time = MPI_Wtime();
+    total_time = end_time - start_time;
+
+    if (rank == 0) {
+        printf("Total time taken: %f seconds\n", total_time);
+    }
+
+
     MPI_Finalize();
+
     return 0;
 }
+EOF
