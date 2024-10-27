@@ -18,7 +18,7 @@ int main(int argc, char **argv) {
     }
 
     upper_limit = total_p;
-    int c_prime = -1;  // Initialize each process's prime to -1 (unassigned)
+    int c_prime = -1;  // Initialize each process's prime
     start_time = MPI_Wtime();
 
     
@@ -28,8 +28,7 @@ int main(int argc, char **argv) {
         
 
         // Send non-multiples of 2 up to n
-        for (int num = 3; num <= upper_limit * upper_limit; num+=2) {  // Increased range for more numbers
-           
+        for (int num = 3; num <= upper_limit * upper_limit; num+=2) { 
                 MPI_Send(&num, 1, MPI_INT, rank + 1, 0, MPI_COMM_WORLD);
             
         }
@@ -50,8 +49,7 @@ int main(int argc, char **argv) {
         int number;
         while (1) {
             MPI_Recv(&number, 1, MPI_INT, rank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-            if (number == -1) {  // Received terminator
-                // Pass the terminator to the next process if not the last in the chain
+            if (number == -1) {  // Received terminator 
                 if (rank < total_p - 1) {
                     MPI_Send(&number, 1, MPI_INT, rank + 1, 0, MPI_COMM_WORLD);
                 }
@@ -59,7 +57,6 @@ int main(int argc, char **argv) {
             }
 
             if (number % c_prime != 0) {  // Filter
-                // Send to the next process if not the last
                 if (rank < total_p - 1) {
                     MPI_Send(&number, 1, MPI_INT, rank + 1, 0, MPI_COMM_WORLD);
                 }
